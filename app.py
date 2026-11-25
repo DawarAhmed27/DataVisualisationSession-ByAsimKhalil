@@ -63,30 +63,44 @@ if isinstance(rng, tuple) and len(rng) == 2:
 st.title("🛒 Online Retail - Sales Dashboard")
 st.caption("UK online gift retailer, 1 Dec 2010 - 9 Dec 2011. Sales = Quantity x UnitPrice.")
 
-monthly = df.groupby("Month", as_index=False)["Sales"].sum()
+monthly = (df.groupby("Month")
+             .agg(Sales=("Sales", "sum"), Orders=("InvoiceNo", "nunique"))
+             .reset_index())
+monthly["AOV"] = monthly["Sales"] / monthly["Orders"]
 by_country = df.groupby("Country", as_index=False)["Sales"].sum().sort_values("Sales", ascending=False)
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Total sales", f"£{df['Sales'].sum():,.0f}")
-c2.metric("Unique orders", f"{df['InvoiceNo'].nunique():,}")
+# ---------------- KPIs ----------------
+total_sales = df["Sales"].sum()
+n_orders = df["InvoiceNo"].nunique()
+aov = total_sales / n_orders if n_orders else 0
+st.subheader("Key performance indicators")
+k1, k2, k3 = st.columns(3)
+k1.metric("Total sales", f"£{total_sales:,.0f}")
+k2.metric("Orders", f"{n_orders:,}")
+k3.metric("Average order value (AOV)", f"£{aov:,.2f}", help="Total sales / number of unique orders")
+
+k4, k5, k6, k7 = st.columns(4)
+k4.metric("Customers", f"{df['CustomerID'].nunique():,}", help="Rows without a CustomerID are not counted")
+k5.metric("Units sold", f"{df['Quantity'].sum():,}")
+k6.metric("Items per order", f"{(df['Quantity'].sum() / n_orders) if n_orders else 0:,.1f}")
 if len(monthly):
     best = monthly.loc[monthly["Sales"].idxmax()]
-    c3.metric("Best month", best["Month"], f"£{best['Sales']:,.0f}", delta_color="off")
-    c4.metric("Top country", by_country.iloc[0]["Country"], f"£{by_country.iloc[0]['Sales']:,.0f}", delta_color="off")
+    k7.metric("Best month", best["Month"], f"£{best['Sales']:,.0f}", delta_color="off")
 
 st.divider()
 
-# ---------------- Monthly sales ----------------
-st.subheader("Sales by month")
+# ---------------- Monthly trend ----------------
+st.subheader("Monthly trend")
+kpi = st.radio("KPI", ["Sales", "Orders", "AOV"], horizontal=True)
 if len(monthly):
-    monthly["colour"] = monthly["Sales"].eq(monthly["Sales"].max()).map({True: BLUE, False: GREY})
-    fig = px.bar(monthly, x="Month", y="Sales", color="colour",
-                 color_discrete_map="identity", labels={"Sales": "Sales (£)"})
+    monthly["colour"] = monthly[kpi].eq(monthly[kpi].max()).map({True: BLUE, False: GREY})
+    unit = {"Sales": "£", "Orders": "", "AOV": "£"}[kpi]
+    fig = px.bar(monthly, x="Month", y=kpi, color="colour", color_discrete_map="identity")
     fig.update_layout(showlegend=False, plot_bgcolor="white", paper_bgcolor="white",
                       margin=dict(t=10, b=10))
-    fig.update_yaxes(tickprefix="£", gridcolor="#e5e7eb")
+    fig.update_yaxes(tickprefix=unit, gridcolor="#e5e7eb")
     st.plotly_chart(fig, width="stretch")
-    st.caption("Dec 2011 is incomplete: the data ends on 9 December.")
+    st.caption("Highlighted bar = highest month. Dec 2011 is incomplete: the data ends on 9 December.")
 
 left, right = st.columns(2)
 
